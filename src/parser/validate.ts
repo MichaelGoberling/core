@@ -6,7 +6,7 @@ import {
   FailedFlagValidationError,
 } from './errors'
 import {ParserArg, ParserInput, ParserOutput, Flag, CompletableFlag} from '../interfaces'
-import {FlagRelationship} from '../interfaces/parser'
+import {FlagRelationship, FlagToken} from '../interfaces/parser'
 import {uniq} from '../config/util'
 
 export async function validate(parse: {
@@ -70,6 +70,12 @@ export async function validate(parse: {
   async function resolveFlags(flags: FlagRelationship[]): Promise<Record<string, unknown>> {
     const promises = flags.map(async flag => {
       if (typeof flag === 'string') {
+        if (flag.startsWith('no-')) {
+          const namedFlag = flag.replace('no-', '')
+          const rawInput = parse.output.raw.find(rawFlag => (rawFlag as FlagToken).flag === namedFlag)?.input.replace('--', '')
+          return rawInput === flag ? [rawInput, parse.output.flags[namedFlag]] : []
+        }
+
         return [flag, parse.output.flags[flag]]
       }
 
@@ -82,7 +88,7 @@ export async function validate(parse: {
 
   function getPresentFlags(flags: Record<string, unknown>): string[] {
     return Object.keys(flags).reduce((acc, key) => {
-      if (flags[key]) acc.push(key)
+      if (flags[key] !== undefined) acc.push(key)
       return acc
     }, [] as string[])
   }
@@ -113,8 +119,8 @@ export async function validate(parse: {
         continue
       if (parse.output.metadata.flags && parse.output.metadata.flags[name]?.setFromDefault)
         continue
-      if (parse.output.flags[flag]) {
-        return {...base, status: 'failed', reason: `--${flag}=${parse.output.flags[flag]} cannot also be provided when using --${name}`}
+      if (parse.output.flags[flag] || parse.output.flags[flag.replace('no-', '')] !== undefined) {
+        return {...base, status: 'failed', reason: `--${flag}${parse.output.flags[flag] ? `=${parse.output.flags[flag]}` : ''} cannot also be provided when using --${name}`}
       }
     }
 
